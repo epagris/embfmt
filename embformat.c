@@ -5,6 +5,7 @@
 #include <stdarg.h>
 #include <stdbool.h>
 #include <stddef.h>
+#include <stdint.h>
 
 #define MAX(x, y) (((x) > (y)) ? (x) : (y))
 #define MIN(x, y) (((x) < (y)) ? (x) : (y))
@@ -34,6 +35,7 @@ typedef enum {
     DOUBLE,
     DOUBLE_EXPONENTIAL,
     UNSIGNED_HEXADECIMAL_INT,
+    UNSIGNED_HEXADECIMAL_INT_UPPERCASE,
     STRING,
     CHARACTER
 } FmtType;
@@ -83,20 +85,20 @@ static size_t string_length(char *str) {
 }
 
 // calculate power
-static unsigned long int power(unsigned long int a, unsigned long int n) {
+static uint64_t power(uint64_t a, unsigned long int n) {
     if (n == 0) {
         return 1;
     }
-    unsigned long int a_orig = a;
-    for (size_t i = 0; i < n - 1; i++) {
+    uint64_t a_orig = a;
+    for (unsigned long int i = 0; i < n - 1; i++) {
         a *= a_orig;
     }
     return a;
 }
 
 // round to closest base^1 value
-static unsigned long int round_to_base(unsigned long int a, unsigned long int base) {
-    unsigned long int mod = a % base;
+static uint64_t round_to_base(uint64_t a, uint64_t base) {
+    uint64_t mod = a % base;
     if (2 * mod < base) { // avoid floating-point arithemtics!
         return a - mod;
     } else {
@@ -127,7 +129,7 @@ static void insert_leading_characters(char *str, size_t n_str, char c, size_t n_
 // base: base
 // gntpd: greatest non-zero ten-power divisor
 // return: exponent, if l != 0, -1 if l == 0
-static int scientific_form_exponent(unsigned long int l, unsigned int base, unsigned long int *gntpd) {
+static int scientific_form_exponent(uint64_t l, unsigned int base, uint64_t *gntpd) {
     int e = -1;
     *gntpd = 1;
     while (l != 0) {
@@ -151,9 +153,9 @@ static int pfn_literal_percent(va_list *va, FmtWord *fmt, char *outbuf, size_t f
 
 #define INT_PRINT_OUTBUF_SIZE (47)
 
-static char sNumChars[] = "0123456789abcdef";
+static char sNumChars[] = "0123456789abcdefABCDEF";
 
-static int print_number(unsigned long int u, bool negative, FmtWord *fmt, char *outbuf, size_t free_space) {
+static int print_number(uint64_t u, bool negative, FmtWord *fmt, char *outbuf, size_t free_space) {
     // output buffer fitting the full long int range
     char outstrbuf[INT_PRINT_OUTBUF_SIZE + 1];
     outstrbuf[0] = '\0';
@@ -180,13 +182,17 @@ static int print_number(unsigned long int u, bool negative, FmtWord *fmt, char *
     }
 
     // get number of digits the number consists of
-    unsigned long int gntpd;
+    uint64_t gntpd;
     int digits = scientific_form_exponent(u, base, &gntpd) + 1;
 
     // convert int to string
     while (gntpd > 0) {
-        unsigned long int place_value = (u / gntpd); // integer division!
+        uint64_t place_value = (u / gntpd); // integer division!
         u -= place_value * gntpd; // substract value corresponding to the place
+
+        if (fmt->type == UNSIGNED_HEXADECIMAL_INT_UPPERCASE && place_value > 9) {
+            place_value += 6;
+        }
         *outstr = sNumChars[place_value]; // print place value string
 
         gntpd /= base; // divide by the base (advance to lower place)
@@ -214,26 +220,28 @@ static int print_number(unsigned long int u, bool negative, FmtWord *fmt, char *
 }
 
 static int pfn_integer(va_list *va, FmtWord *fmt, char *outbuf, size_t free_space) {
-    unsigned long int u;
+    uint64_t u;
     bool negative = false;
     if (fmt->type == SIGNED_INTEGER) { // for signed integers
-        long int si;
+        int64_t si;
         if (fmt->length == LEN_NORMAL) { // ...without length specifiers
             si = va_arg(*va, int);
         } else { // ...with length specifiers
-            si = va_arg(*va, long int);
+            si = va_arg(*va, int64_t);
         }
 
         // absolute value
         if (si < 0) {
             negative = true;
             u = -si;
+        } else {
+            u = si;
         }
-    } else if (fmt->type == UNSIGNED_INTEGER || fmt->type == UNSIGNED_HEXADECIMAL_INT) { // for UNsigned integers
+    } else if (fmt->type == UNSIGNED_INTEGER || fmt->type == UNSIGNED_HEXADECIMAL_INT || fmt->type == UNSIGNED_HEXADECIMAL_INT_UPPERCASE) { // for UNsigned integers
         if (fmt->length == LEN_NORMAL) { // ...without length specifiers
             u = va_arg(*va, unsigned int);
         } else { // ...with length specifiers
-            u = va_arg(*va, unsigned long int);
+            u = va_arg(*va, uint64_t);
         }
     }
 
@@ -272,7 +280,7 @@ static int pfn_double(va_list *va, FmtWord *fmt, char *outbuf, size_t free_space
     };
 
     // separate into integer and fractional part
-    unsigned long int int_part = (unsigned long int) d; // integer part
+    uint64_t int_part = (uint64_t) d; // integer part
     int copy_len = print_number(int_part, negative, &int_fmt, outbuf, free_space);
     free_space -= copy_len;
     outbuf += copy_len;
@@ -299,7 +307,7 @@ static int pfn_double(va_list *va, FmtWord *fmt, char *outbuf, size_t free_space
         // extract fractional part as integer
         double d_frac = d - (double) int_part;
         d_frac *= (double) power(10, fmt->precision);
-        unsigned long int frac_part = (unsigned long int) d_frac;
+        uint64_t frac_part = (uint64_t) d_frac;
         frac_part = round_to_base(frac_part, 10);
 
         // print fractional part
@@ -354,15 +362,16 @@ static int pfn_string(va_list *va, FmtWord *fmt, char *outbuf, size_t free_space
 
 // format swting assignment table
 static FmtTypeDesignatorPair sTypeDesAssignment[] = {
-        {'%',  LITERAL_PERCENT,          pfn_literal_percent},
-        {'d',  SIGNED_INTEGER,           pfn_integer},
-        {'i',  SIGNED_INTEGER,           pfn_integer},
-        {'u',  UNSIGNED_INTEGER,         pfn_integer},
-        {'f',  DOUBLE,                   pfn_double},
-        {'e',  DOUBLE_EXPONENTIAL,       pfn_double},
-        {'x',  UNSIGNED_HEXADECIMAL_INT, pfn_integer},
-        {'s',  STRING,                   pfn_string},
-        {'c',  CHARACTER,                pfn_char},
+        {'%',  LITERAL_PERCENT,                    pfn_literal_percent},
+        {'d',  SIGNED_INTEGER,                     pfn_integer},
+        {'i',  SIGNED_INTEGER,                     pfn_integer},
+        {'u',  UNSIGNED_INTEGER,                   pfn_integer},
+        {'f',  DOUBLE,                             pfn_double},
+        {'e',  DOUBLE_EXPONENTIAL,                 pfn_double},
+        {'x',  UNSIGNED_HEXADECIMAL_INT,           pfn_integer},
+        {'X',  UNSIGNED_HEXADECIMAL_INT_UPPERCASE, pfn_integer},
+        {'s',  STRING,                             pfn_string},
+        {'c',  CHARACTER,                          pfn_char},
         {'\0', UNKNOWN} // termination
 };
 
@@ -427,6 +436,7 @@ static char *seek_delimiter(char *str) {
 static char *locate_format_word(char *str, char **begin, size_t *length) {
     char *delim_pos = seek_delimiter(str); // seek for format specifier begin
     if (delim_pos == NULL) { // if not found...
+        *length = 0; // set to zero if not found
         return NULL; // ...then return
     }
 
@@ -513,6 +523,7 @@ static int process_format_word(char *str, FmtWord *word, int * rewind) {
                 word->flags |= FLAG_PREPEND_PLUS_SIGN;
                 break;
         }
+        str++;
     }
 
     // 2.: look for width
@@ -546,12 +557,7 @@ static int process_format_word(char *str, FmtWord *word, int * rewind) {
 
 #define MAX_FORMAT_WORD_LEN (15)
 
-unsigned long int embfmt(char *str, unsigned long int len, char *format, ...) {
-    // get number of expected arguments and initiate va_list usage
-    int argc = get_number_of_arguments_by_format_string(format);
-    va_list args;
-    va_start(args, argc);
-
+unsigned long int vembfmt(char *str, unsigned long int len, char *format, va_list args) {
     // process format string
     long int free_space = len;
     char *unproc_text = format;
@@ -588,7 +594,18 @@ unsigned long int embfmt(char *str, unsigned long int len, char *format, ...) {
         sum_copy_len += string_copy(str, unproc_text, free_space);
     }
 
-    va_end(args);
-
     return sum_copy_len;
+}
+
+unsigned long int embfmt(char *str, unsigned long int len, char *format, ...) {
+    // get number of expected arguments and initiate va_list usage
+    int argc = get_number_of_arguments_by_format_string(format);
+
+    va_list args;
+    va_start(args, format);
+
+    unsigned long int copy_len = vembfmt(str, len, format, args);
+
+    va_end(args);
+    return copy_len;
 }
