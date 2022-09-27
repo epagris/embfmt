@@ -41,7 +41,7 @@ typedef enum {
 } FmtType;
 
 struct _FmtWord;
-typedef int (*printfn)(va_list *va, struct _FmtWord *fmt, char *outbuf, size_t free_space);
+typedef int (*printfn)(va_list va, struct _FmtWord *fmt, char *outbuf, size_t free_space);
 
 // pair of type and designator character
 typedef struct {
@@ -143,7 +143,7 @@ static int scientific_form_exponent(uint64_t l, unsigned int base, uint64_t *gnt
     return e;
 }
 
-static int pfn_literal_percent(va_list *va, FmtWord *fmt, char *outbuf, size_t free_space) {
+static int pfn_literal_percent(va_list va, FmtWord *fmt, char *outbuf, size_t free_space) {
     if (free_space >= 1) {
         outbuf[0] = '%';
         outbuf[1] = '\0';
@@ -177,7 +177,7 @@ static int print_number(uint64_t u, bool negative, FmtWord *fmt, char *outbuf, s
     int base = 10; // for safety...
     if (fmt->type == UNSIGNED_INTEGER || fmt->type == SIGNED_INTEGER) {
         base = 10;
-    } else if (fmt->type == UNSIGNED_HEXADECIMAL_INT) {
+    } else if (fmt->type == UNSIGNED_HEXADECIMAL_INT || fmt->type == UNSIGNED_HEXADECIMAL_INT_UPPERCASE) {
         base = 16;
     }
 
@@ -202,7 +202,7 @@ static int print_number(uint64_t u, bool negative, FmtWord *fmt, char *outbuf, s
 
     // pad with zeros if requested
     if (fmt->width != -1 && (fmt->flags & FLAG_LEADING_ZEROS || fmt->flags & FLAG_LEADING_SPACES)) {
-        int pad_n = MAX(fmt->width - digits - sign_prepended, digits);
+        int pad_n = MAX(fmt->width - digits - sign_prepended, 0);
         if (pad_n > 0) {
             // pad differently based on padding character
             if (fmt->flags & FLAG_LEADING_ZEROS) { // -00000nnn
@@ -219,15 +219,15 @@ static int print_number(uint64_t u, bool negative, FmtWord *fmt, char *outbuf, s
     return copy_len;
 }
 
-static int pfn_integer(va_list *va, FmtWord *fmt, char *outbuf, size_t free_space) {
-    uint64_t u;
+static int pfn_integer(va_list va, FmtWord *fmt, char *outbuf, size_t free_space) {
+    uint64_t u = 0;
     bool negative = false;
     if (fmt->type == SIGNED_INTEGER) { // for signed integers
         int64_t si;
         if (fmt->length == LEN_NORMAL) { // ...without length specifiers
-            si = va_arg(*va, int);
+            si = va_arg(va, int);
         } else { // ...with length specifiers
-            si = va_arg(*va, int64_t);
+            si = va_arg(va, int64_t);
         }
 
         // absolute value
@@ -239,9 +239,10 @@ static int pfn_integer(va_list *va, FmtWord *fmt, char *outbuf, size_t free_spac
         }
     } else if (fmt->type == UNSIGNED_INTEGER || fmt->type == UNSIGNED_HEXADECIMAL_INT || fmt->type == UNSIGNED_HEXADECIMAL_INT_UPPERCASE) { // for UNsigned integers
         if (fmt->length == LEN_NORMAL) { // ...without length specifiers
-            u = va_arg(*va, unsigned int);
+            unsigned int d = va_arg(va, unsigned int);
+            u = d;
         } else { // ...with length specifiers
-            u = va_arg(*va, uint64_t);
+            u = va_arg(va, uint64_t);
         }
     }
 
@@ -252,9 +253,9 @@ static int pfn_integer(va_list *va, FmtWord *fmt, char *outbuf, size_t free_spac
 
 #define DECIMAL_POINT ('.')
 
-static int pfn_double(va_list *va, FmtWord *fmt, char *outbuf, size_t free_space) {
+static int pfn_double(va_list va, FmtWord *fmt, char *outbuf, size_t free_space) {
     // get passed double variable
-    double d = va_arg(*va, double);
+    double d = va_arg(va, double);
     bool negative = d < 0;
     if (negative) {
         d *= -1;
@@ -306,9 +307,9 @@ static int pfn_double(va_list *va, FmtWord *fmt, char *outbuf, size_t free_space
 
         // extract fractional part as integer
         double d_frac = d - (double) int_part;
-        d_frac *= (double) power(10, fmt->precision);
+        d_frac *= (double) power(10, fmt->precision + 1); // get one more digit
         uint64_t frac_part = (uint64_t) d_frac;
-        frac_part = round_to_base(frac_part, 10);
+        frac_part = round_to_base(frac_part, 10) / 10; // remove last zero digit (result of rounding)
 
         // print fractional part
         copy_len = print_number(frac_part, false, &frac_fmt, outbuf, free_space);
@@ -345,8 +346,8 @@ static int pfn_double(va_list *va, FmtWord *fmt, char *outbuf, size_t free_space
 }
 
 // print character
-static int pfn_char(va_list *va, FmtWord *fmt, char *outbuf, size_t free_space) {
-    int c = va_arg(*va, int);
+static int pfn_char(va_list va, FmtWord *fmt, char *outbuf, size_t free_space) {
+    int c = va_arg(va, int);
     if (free_space >= 1) {
         outbuf[0] = (char) c;
         outbuf[1] = '\0';
@@ -355,8 +356,8 @@ static int pfn_char(va_list *va, FmtWord *fmt, char *outbuf, size_t free_space) 
 }
 
 // print string
-static int pfn_string(va_list *va, FmtWord *fmt, char *outbuf, size_t free_space) {
-    char *str = va_arg(*va, char *);
+static int pfn_string(va_list va, FmtWord *fmt, char *outbuf, size_t free_space) {
+    char *str = va_arg(va, char *);
     return string_copy(outbuf, str, free_space);
 }
 
@@ -579,7 +580,7 @@ unsigned long int vembfmt(char *str, unsigned long int len, char *format, va_lis
         int rewind;
         process_format_word(word_str, &word, &rewind);
         if (word.type != UNKNOWN) {
-            int copy_len = word.pTypeDes->fn(&args, &word, str, free_space); // variable with the same name!
+            int copy_len = word.pTypeDes->fn(args, &word, str, free_space); // variable with the same name!
             free_space -= copy_len;
             str += copy_len;
             sum_copy_len += copy_len;
