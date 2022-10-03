@@ -280,12 +280,25 @@ static int pfn_double(va_list *va, FmtWord *fmt, char *outbuf, size_t free_space
 
 		*outbuf = '\0';
 
-		// prepare format for
+		// prepare format for printing fractional part
 		FmtWord frac_fmt = { .flags = FLAG_NO, .width = -1, .type = UNSIGNED_INTEGER };
 
-		// extract fractional part as integer
+        // get "leading zeros" in fractional part
 		double d_frac = d - (double) int_part;
-		d_frac *= (double) power(10, fmt->precision + 1); // get one more digit
+
+        // print leading zeros
+        int leading_zeros_printed = 0;
+        while ((d_frac * 10.0) < 1.0 && leading_zeros_printed < fmt->precision) {
+            d_frac *= 10.0;
+            *outbuf = '0';
+            outbuf++;
+            free_space--;
+            *outbuf = '\0';
+            leading_zeros_printed++;
+        }
+
+        // extract fractional part as integer
+		d_frac *= (double) power(10, fmt->precision - leading_zeros_printed + 1); // get one more digit
 		uint64_t frac_part = (uint64_t) d_frac;
 		frac_part = round_to_base(frac_part, 10) / 10; // remove last zero digit (result of rounding)
 
