@@ -293,6 +293,7 @@ static int pfn_double(va_list *va, FmtWord *fmt, char *outbuf, size_t free_space
             *outbuf = '0';
             outbuf++;
             free_space--;
+            sum_copy_len++;
             *outbuf = '\0';
             leading_zeros_printed++;
         }
