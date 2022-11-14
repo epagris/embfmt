@@ -352,7 +352,7 @@ static int pfn_string(va_list *va, FmtWord *fmt, char *outbuf, size_t free_space
 // format swting assignment table
 static FmtTypeDesignatorPair sTypeDesAssignment[] = { { '%', LITERAL_PERCENT, pfn_literal_percent }, { 'd', SIGNED_INTEGER, pfn_integer }, { 'i', SIGNED_INTEGER, pfn_integer }, { 'u',
 		UNSIGNED_INTEGER, pfn_integer }, { 'f', DOUBLE, pfn_double }, { 'e', DOUBLE_EXPONENTIAL, pfn_double }, { 'x', UNSIGNED_HEXADECIMAL_INT, pfn_integer }, { 'X',
-		UNSIGNED_HEXADECIMAL_INT_UPPERCASE, pfn_integer }, { 's', STRING, pfn_string }, { 'c', CHARACTER, pfn_char }, { '\0', UNKNOWN } // termination
+		UNSIGNED_HEXADECIMAL_INT_UPPERCASE, pfn_integer }, { 'p', UNSIGNED_HEXADECIMAL_INT, pfn_integer }, { 's', STRING, pfn_string }, { 'c', CHARACTER, pfn_char }, { '\0', UNKNOWN } // termination
 };
 
 // ------------------------------------------------------------
