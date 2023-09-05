@@ -337,7 +337,7 @@ static int pfn_double(va_list *va, FmtWord *fmt, char *outbuf, size_t free_space
 // print character
 static int pfn_char(va_list *va, FmtWord *fmt, char *outbuf, size_t free_space) {
     int c = va_arg((*va), int);
-    unsigned rep = (fmt->width == 0) ? 1 : fmt->width; // determine repetition count
+    unsigned rep = (fmt->width <= 0) ? 1 : fmt->width; // determine repetition count
     rep = MIN(free_space, rep);
     for (unsigned i = 0; i < rep; i++) {
         outbuf[i] = (char)c;
