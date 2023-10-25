@@ -5,7 +5,7 @@
 
 #include <stdarg.h>
 
-unsigned long int vembfmt(char *str, unsigned long int len, char *format, va_list args);
-unsigned long int embfmt(char *str, unsigned long int len, char *format, ...);
+unsigned long int vembfmt(char *str, unsigned long int len, const char *format, va_list args);
+unsigned long int embfmt(char *str, unsigned long int len, const char *format, ...);
 
 #endif //EMBFORMAT_EMBFORMAT_H

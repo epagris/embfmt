@@ -364,7 +364,7 @@ static FmtTypeDesignatorPair sTypeDesAssignment[] = {{'%',  LITERAL_PERCENT,    
                                                      {'p',  UNSIGNED_HEXADECIMAL_INT,           pfn_integer},
                                                      {'s',  STRING,                             pfn_string},
                                                      {'c',  CHARACTER,                          pfn_char},
-                                                     {'\0', UNKNOWN} // termination
+                                                     {'\0', UNKNOWN, NULL} // termination
 };
 
 // ------------------------------------------------------------
@@ -389,8 +389,8 @@ static char *fetch_number(char *str, int *num) {
 }
 
 // get number of arguments from the format string
-static int get_number_of_arguments_by_format_string(char *format_str) {
-    char *iter = format_str;
+static int get_number_of_arguments_by_format_string(const char *format_str) {
+    const char *iter = format_str;
     int cnt = 0;
     while (*iter != '\0') {
         if (*iter == FORMAT_DELIMITER) {
@@ -406,7 +406,7 @@ static int get_number_of_arguments_by_format_string(char *format_str) {
 }
 
 // seek for format delimiter ('%')
-static char *seek_delimiter(char *str) {
+static const char *seek_delimiter(const char *str) {
     // iterate over characters until either '%' is found or end of string is reached
     while (*(str) != '\0' && *(str) != FORMAT_DELIMITER) {
         str++;
@@ -425,8 +425,8 @@ static char *seek_delimiter(char *str) {
 // begin: pointer to pointer to the begin of the format word
 // length: length of the format word (number of bytes to be copied after)
 // return: pointer to unprocessed input string
-static char *locate_format_word(char *str, char **begin, size_t *length) {
-    char *delim_pos = seek_delimiter(str); // seek for format specifier begin
+static const char *locate_format_word(const char *str, const char **begin, size_t *length) {
+    const char *delim_pos = seek_delimiter(str); // seek for format specifier begin
     if (delim_pos == NULL) { // if not found...
         *length = 0; // set to zero if not found
         return NULL; // ...then return
@@ -435,17 +435,17 @@ static char *locate_format_word(char *str, char **begin, size_t *length) {
     // here we have pointer to the '%' character of a format "word"
 
     // a valid format string has a length at least of 1 byte (i. e. something must follow the '%')
-    char *word_start = delim_pos + 1;
+    const char *word_start = delim_pos + 1;
     *begin = word_start;
 
     // search the ending of the format word, which can be either a whitespace or a new '%' character (or the '\0')
-    char *word_iter = word_start;
+    const char *word_iter = word_start;
     while ((*word_iter > ' ' || word_iter == word_start) && (*word_iter != FORMAT_DELIMITER || word_iter == word_start) && *word_iter != '\0') {
         word_iter++;
     }
 
     // now, word_iter points to the first character following the previously found delimiter now belonging to the format word
-    char *unproc_text = word_iter;
+    const char *unproc_text = word_iter;
 
     // calculate the length of the word
     *length = word_iter - word_start;
@@ -459,10 +459,10 @@ static char *locate_format_word(char *str, char **begin, size_t *length) {
 // preceding_text: text before format word
 // maxlen: maximum STRING LENGTH of the output
 // return: pointer to unprocessed text OR NULL on failure
-static char *fetch_format_word(char *str, char *word, char **word_begin, size_t maxlen) {
+static const char *fetch_format_word(const char *str, char *word, const char **word_begin, size_t maxlen) {
     // locate word
     size_t len;
-    char *unproc_text = locate_format_word(str, word_begin, &len);
+    const char *unproc_text = locate_format_word(str, word_begin, &len);
 
     // copy
     string_copy(word, *word_begin, MIN(maxlen, len));
@@ -515,6 +515,8 @@ static int process_format_word(char *str, FmtWord *word, int *rewind) {
             case '+':
                 word->flags |= FLAG_PREPEND_PLUS_SIGN;
                 break;
+            default:
+            	break;
         }
         str++;
     }
@@ -555,13 +557,13 @@ static int process_format_word(char *str, FmtWord *word, int *rewind) {
 
 #define MAX_FORMAT_WORD_LEN (15)
 
-unsigned long int vembfmt(char *str, unsigned long int len, char *format, va_list args) {
+unsigned long int vembfmt(char *str, unsigned long int len, const char *format, va_list args) {
     // process format string
     long int free_space = len;
-    char *unproc_text = format;
-    char *unproc_text_next = NULL;
+    const char *unproc_text = format;
+    const char *unproc_text_next = NULL;
     char word_str[MAX_FORMAT_WORD_LEN + 1];
-    char *word_begin;
+    const char *word_begin;
     size_t sum_copy_len = 0;
     while ((*unproc_text) && (unproc_text_next = fetch_format_word(unproc_text, word_str, &word_begin, MAX_FORMAT_WORD_LEN)) && free_space > 0) {
         // print preceding text
@@ -603,7 +605,7 @@ unsigned long int vembfmt(char *str, unsigned long int len, char *format, va_lis
     return sum_copy_len;
 }
 
-unsigned long int embfmt(char *str, unsigned long int len, char *format, ...) {
+unsigned long int embfmt(char *str, unsigned long int len, const char *format, ...) {
     // get number of expected arguments and initiate va_list usage
     int argc = get_number_of_arguments_by_format_string(format);
 
