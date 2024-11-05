@@ -6,6 +6,7 @@
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
+#include <sys/_types.h>
 
 #define MAX(x, y) (((x) > (y)) ? (x) : (y))
 #define MIN(x, y) (((x) < (y)) ? (x) : (y))
@@ -14,17 +15,31 @@
 
 // format length ((nothing),l)
 typedef enum {
-    LEN_NORMAL, LEN_LONG
+    LEN_NORMAL,
+    LEN_LONG
 } FmtLength;
 
 // format flags ((nothing),0)
 typedef enum {
-    FLAG_NO = 0, FLAG_LEADING_ZEROS = 1, FLAG_LEADING_SPACES = 2, FLAG_PREPEND_PLUS_SIGN = 4
+    FLAG_NO = 0,
+    FLAG_LEADING_ZEROS = 1,
+    FLAG_LEADING_SPACES = 2,
+    FLAG_PREPEND_PLUS_SIGN = 4
 } FmtFlags;
 
 // format type
 typedef enum {
-    UNKNOWN = -1, LITERAL_PERCENT, SIGNED_INTEGER, UNSIGNED_INTEGER, DOUBLE, DOUBLE_EXPONENTIAL, UNSIGNED_HEXADECIMAL_INT, UNSIGNED_HEXADECIMAL_INT_UPPERCASE, STRING, CHARACTER
+    UNKNOWN = -1,
+    LITERAL_PERCENT,
+    SIGNED_INTEGER,
+    UNSIGNED_INTEGER,
+    DOUBLE,
+    DOUBLE_EXPONENTIAL,
+    DOUBLE_TRUNCATE,
+    UNSIGNED_HEXADECIMAL_INT,
+    UNSIGNED_HEXADECIMAL_INT_UPPERCASE,
+    STRING,
+    CHARACTER
 } FmtType;
 
 struct _FmtWord;
@@ -82,6 +97,21 @@ static uint64_t power(uint64_t a, unsigned long int n) {
         a *= a_orig;
     }
     return a;
+}
+
+static double powerf(double d, long int n) {
+    if (n == 0) {
+        return 1.0;
+    }
+
+    d = (n < 0) ? (1 / d) : d;
+    n = (n < 0) ? -n : n;
+
+    double d_orig = d;
+    for (unsigned long int i = 0; i < n - 1; i++) {
+        d *= d_orig;
+    }
+    return d;
 }
 
 // round to closest base^1 value
@@ -176,15 +206,15 @@ static int print_number(uint64_t u, bool negative, FmtWord *fmt, char *outbuf, s
     // convert int to string
     while (gntpd > 0) {
         uint64_t place_value = (u / gntpd); // integer division!
-        u -= place_value * gntpd; // substract value corresponding to the place
+        u -= place_value * gntpd;           // substract value corresponding to the place
 
         if (fmt->type == UNSIGNED_HEXADECIMAL_INT_UPPERCASE && place_value > 9) {
             place_value += 6;
         }
         *outstr = sNumChars[place_value]; // print place value string
 
-        gntpd /= base; // divide by the base (advance to lower place)
-        outstr++; // advance in the string
+        gntpd /= base;  // divide by the base (advance to lower place)
+        outstr++;       // advance in the string
         *outstr = '\0'; // move the terminating zero
     }
 
@@ -193,10 +223,10 @@ static int print_number(uint64_t u, bool negative, FmtWord *fmt, char *outbuf, s
         int pad_n = MAX(fmt->width - digits - sign_prepended, 0);
         if (pad_n > 0) {
             // pad differently based on padding character
-            if (fmt->flags & FLAG_LEADING_ZEROS) { // -00000nnn
+            if (fmt->flags & FLAG_LEADING_ZEROS) {                                                                         // -00000nnn
                 insert_leading_characters(outstrbuf + sign_prepended, INT_PRINT_OUTBUF_SIZE - sign_prepended, '0', pad_n); // insert leading characters
-            } else if (fmt->flags & FLAG_LEADING_SPACES) { // _____-nnn
-                insert_leading_characters(outstrbuf, INT_PRINT_OUTBUF_SIZE, ' ', pad_n); // insert leading characters
+            } else if (fmt->flags & FLAG_LEADING_SPACES) {                                                                 // _____-nnn
+                insert_leading_characters(outstrbuf, INT_PRINT_OUTBUF_SIZE, ' ', pad_n);                                   // insert leading characters
             }
             outstr += pad_n; // advance pointer to the end of the string
         }
@@ -226,7 +256,7 @@ static int pfn_integer(va_list *va, FmtWord *fmt, char *outbuf, size_t free_spac
             u = si;
         }
     } else if (fmt->type == UNSIGNED_INTEGER || fmt->type == UNSIGNED_HEXADECIMAL_INT || fmt->type == UNSIGNED_HEXADECIMAL_INT_UPPERCASE) { // for UNsigned integers
-        if (fmt->length == LEN_NORMAL) { // ...without length specifiers
+        if (fmt->length == LEN_NORMAL) {                                                                                                    // ...without length specifiers
             unsigned int d = va_arg((*va), unsigned int);
             u = d;
         } else { // ...with length specifiers
@@ -249,11 +279,17 @@ static int pfn_double(va_list *va, FmtWord *fmt, char *outbuf, size_t free_space
         d *= -1;
     }
 
+    // round to requested precision if trucation is not instructed
+    if (fmt->type != DOUBLE_TRUNCATE) {
+        double r = 0.5 * powerf(10, -fmt->precision);
+        d += r;
+    }
+
     // normalize if exponential form is required
     int exponent = 0;
     if (fmt->type == DOUBLE_EXPONENTIAL) {
         double q = d < 1.0 ? 10.0 : 0.1; // quotient
-        int d_exp = d < 1.0 ? -1 : 1; // shift per iteration in exponent
+        int d_exp = d < 1.0 ? -1 : 1;    // shift per iteration in exponent
         while (!(d >= 1.0 && d < 10.0)) {
             d *= q;
             exponent += d_exp;
@@ -264,7 +300,7 @@ static int pfn_double(va_list *va, FmtWord *fmt, char *outbuf, size_t free_space
     FmtWord int_fmt = {.flags = fmt->flags, .type = UNSIGNED_INTEGER, .width = fmt->width};
 
     // separate into integer and fractional part
-    uint64_t int_part = (uint64_t) d; // integer part
+    uint64_t int_part = (uint64_t)d; // integer part
     int copy_len = print_number(int_part, negative, &int_fmt, outbuf, free_space);
     free_space -= copy_len;
     outbuf += copy_len;
@@ -285,7 +321,7 @@ static int pfn_double(va_list *va, FmtWord *fmt, char *outbuf, size_t free_space
         FmtWord frac_fmt = {.flags = FLAG_NO, .width = -1, .type = UNSIGNED_INTEGER};
 
         // get "leading zeros" in fractional part
-        double d_frac = d - (double) int_part;
+        double d_frac = d - (double)int_part;
 
         // print leading zeros
         int leading_zeros_printed = 0;
@@ -300,9 +336,8 @@ static int pfn_double(va_list *va, FmtWord *fmt, char *outbuf, size_t free_space
         }
 
         // extract fractional part as integer
-        d_frac *= (double) power(10, fmt->precision - leading_zeros_printed + 1); // get one more digit
-        uint64_t frac_part = (uint64_t) d_frac;
-        frac_part = round_to_base(frac_part, 10) / 10; // remove last zero digit (result of rounding)
+        d_frac *= (double)power(10, fmt->precision - leading_zeros_printed);
+        uint64_t frac_part = (uint64_t)d_frac;
 
         // print fractional part
         copy_len = print_number(frac_part, false, &frac_fmt, outbuf, free_space);
@@ -348,23 +383,25 @@ static int pfn_char(va_list *va, FmtWord *fmt, char *outbuf, size_t free_space) 
 
 // print string
 static int pfn_string(va_list *va, FmtWord *fmt, char *outbuf, size_t free_space) {
-    char *str = va_arg((*va), char*);
+    char *str = va_arg((*va), char *);
     return string_copy(outbuf, str, free_space);
 }
 
 // format swting assignment table
-static FmtTypeDesignatorPair sTypeDesAssignment[] = {{'%',  LITERAL_PERCENT,                    pfn_literal_percent},
-                                                     {'d',  SIGNED_INTEGER,                     pfn_integer},
-                                                     {'i',  SIGNED_INTEGER,                     pfn_integer},
-                                                     {'u',  UNSIGNED_INTEGER,                   pfn_integer},
-                                                     {'f',  DOUBLE,                             pfn_double},
-                                                     {'e',  DOUBLE_EXPONENTIAL,                 pfn_double},
-                                                     {'x',  UNSIGNED_HEXADECIMAL_INT,           pfn_integer},
-                                                     {'X',  UNSIGNED_HEXADECIMAL_INT_UPPERCASE, pfn_integer},
-                                                     {'p',  UNSIGNED_HEXADECIMAL_INT,           pfn_integer},
-                                                     {'s',  STRING,                             pfn_string},
-                                                     {'c',  CHARACTER,                          pfn_char},
-                                                     {'\0', UNKNOWN, NULL} // termination
+static FmtTypeDesignatorPair sTypeDesAssignment[] = {
+    {'%', LITERAL_PERCENT, pfn_literal_percent},
+    {'d', SIGNED_INTEGER, pfn_integer},
+    {'i', SIGNED_INTEGER, pfn_integer},
+    {'u', UNSIGNED_INTEGER, pfn_integer},
+    {'f', DOUBLE, pfn_double},
+    {'e', DOUBLE_EXPONENTIAL, pfn_double},
+    {'k', DOUBLE_TRUNCATE, pfn_double},
+    {'x', UNSIGNED_HEXADECIMAL_INT, pfn_integer},
+    {'X', UNSIGNED_HEXADECIMAL_INT_UPPERCASE, pfn_integer},
+    {'p', UNSIGNED_HEXADECIMAL_INT, pfn_integer},
+    {'s', STRING, pfn_string},
+    {'c', CHARACTER, pfn_char},
+    {'\0', UNKNOWN, NULL} // termination
 };
 
 // ------------------------------------------------------------
@@ -427,9 +464,9 @@ static const char *seek_delimiter(const char *str) {
 // return: pointer to unprocessed input string
 static const char *locate_format_word(const char *str, const char **begin, size_t *length) {
     const char *delim_pos = seek_delimiter(str); // seek for format specifier begin
-    if (delim_pos == NULL) { // if not found...
-        *length = 0; // set to zero if not found
-        return NULL; // ...then return
+    if (delim_pos == NULL) {                     // if not found...
+        *length = 0;                             // set to zero if not found
+        return NULL;                             // ...then return
     }
 
     // here we have pointer to the '%' character of a format "word"
@@ -506,17 +543,17 @@ static int process_format_word(char *str, FmtWord *word, int *rewind) {
     word->flags = FLAG_NO;
     while (is_flag(*str)) {
         switch (*str) {
-            case '0':
-                word->flags |= FLAG_LEADING_ZEROS;
-                break;
-            case ' ':
-                word->flags |= FLAG_LEADING_SPACES;
-                break;
-            case '+':
-                word->flags |= FLAG_PREPEND_PLUS_SIGN;
-                break;
-            default:
-            	break;
+        case '0':
+            word->flags |= FLAG_LEADING_ZEROS;
+            break;
+        case ' ':
+            word->flags |= FLAG_LEADING_SPACES;
+            break;
+        case '+':
+            word->flags |= FLAG_PREPEND_PLUS_SIGN;
+            break;
+        default:
+            break;
         }
         str++;
     }
@@ -575,7 +612,7 @@ unsigned long int vembfmt(char *str, unsigned long int len, const char *format, 
         sum_copy_len += copy_len;
 
         // print data
-        FmtWord word = { 0 };
+        FmtWord word = {0};
         int rewind;
         process_format_word(word_str, &word, &rewind);
         if (word.type != UNKNOWN) {
