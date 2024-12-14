@@ -301,11 +301,26 @@ static int pfn_double(va_list *va, FmtWord *fmt, char *outbuf, size_t free_space
 
     // separate into integer and fractional part
     uint64_t int_part = (uint64_t)d; // integer part
+
+    int sum_copy_len = 0; // summed copy length
+
+    // get only the fractional part of the number
+    double d_frac = d - (double)int_part;
+
+    // multiply it by 10**precision and round it to the nearest integer
+    double frac_extended = d_frac * powerf(10, fmt->precision + 1);
+    uint64_t frac_part = round_to_base((uint64_t)frac_extended, 10) / 10;
+
+    // if rounding results a new integer digit
+    uint32_t additional_integer = frac_part / 10;
+    frac_part -= additional_integer * 10;
+    int_part += additional_integer;
+
+    // print integer part
     int copy_len = print_number(int_part, negative, &int_fmt, outbuf, free_space);
     free_space -= copy_len;
     outbuf += copy_len;
-
-    int sum_copy_len = copy_len; // summed copy length
+    sum_copy_len += copy_len;
 
     // fractional part
     if (fmt->precision > 0) {
@@ -315,16 +330,8 @@ static int pfn_double(va_list *va, FmtWord *fmt, char *outbuf, size_t free_space
         free_space--;
         sum_copy_len++;
 
-        *outbuf = '\0';
-
         // prepare format for printing fractional part
         FmtWord frac_fmt = {.flags = FLAG_LEADING_ZEROS, .width = fmt->precision, .type = UNSIGNED_INTEGER};
-
-        // get only the fractional part of the number
-        double d_frac = d - (double)int_part;
-
-        // multiply it by 10**precision and round it to the nearest integer
-        uint64_t frac_part = round_to_base(d_frac * powerf(10, fmt->precision + 1), 10) / 10;
 
         // print fractional part
         copy_len = print_number(frac_part, false, &frac_fmt, outbuf, free_space);
@@ -332,6 +339,8 @@ static int pfn_double(va_list *va, FmtWord *fmt, char *outbuf, size_t free_space
         outbuf += copy_len;
         sum_copy_len += copy_len;
     }
+
+    *outbuf = '\0';
 
     // print exponential if format requires
     if (fmt->type == DOUBLE_EXPONENTIAL) {
@@ -347,7 +356,7 @@ static int pfn_double(va_list *va, FmtWord *fmt, char *outbuf, size_t free_space
 
         unsigned int exponent_abs = exponent > 0 ? exponent : -exponent;
 
-        copy_len = print_number(exponent_abs, exponent < 0, &exponent_fmt, outbuf, free_space);
+        int copy_len = print_number(exponent_abs, exponent < 0, &exponent_fmt, outbuf, free_space);
         free_space -= copy_len;
         outbuf += copy_len;
         sum_copy_len += copy_len;
