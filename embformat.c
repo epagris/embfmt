@@ -281,7 +281,7 @@ static int pfn_double(va_list *va, FmtWord *fmt, char *outbuf, size_t free_space
 
     // round to requested precision if trucation is not instructed
     if (fmt->type != DOUBLE_TRUNCATE) {
-        double r = 0.5 * powerf(10, -fmt->precision);
+        double r = 0.51 * powerf(10, -(fmt->precision + 1));
         d += r;
     }
 
@@ -318,26 +318,13 @@ static int pfn_double(va_list *va, FmtWord *fmt, char *outbuf, size_t free_space
         *outbuf = '\0';
 
         // prepare format for printing fractional part
-        FmtWord frac_fmt = {.flags = FLAG_NO, .width = -1, .type = UNSIGNED_INTEGER};
+        FmtWord frac_fmt = {.flags = FLAG_LEADING_ZEROS, .width = fmt->precision, .type = UNSIGNED_INTEGER};
 
-        // get "leading zeros" in fractional part
+        // get only the fractional part of the number
         double d_frac = d - (double)int_part;
 
-        // print leading zeros
-        int leading_zeros_printed = 0;
-        while ((d_frac * 10.0) < 1.0 && leading_zeros_printed < fmt->precision) {
-            d_frac *= 10.0;
-            *outbuf = '0';
-            outbuf++;
-            free_space--;
-            sum_copy_len++;
-            *outbuf = '\0';
-            leading_zeros_printed++;
-        }
-
-        // extract fractional part as integer
-        d_frac *= (double)power(10, fmt->precision - leading_zeros_printed);
-        uint64_t frac_part = (uint64_t)d_frac;
+        // multiply it by 10**precision and round it to the nearest integer
+        uint64_t frac_part = round_to_base(d_frac * powerf(10, fmt->precision + 1), 10) / 10;
 
         // print fractional part
         copy_len = print_number(frac_part, false, &frac_fmt, outbuf, free_space);
