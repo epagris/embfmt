@@ -312,7 +312,7 @@ static int pfn_double(va_list *va, FmtWord *fmt, char *outbuf, size_t free_space
     uint64_t frac_part = round_to_base((uint64_t)frac_extended, 10) / 10;
 
     // if rounding results a new integer digit
-    uint32_t additional_integer = frac_part / 10;
+    uint32_t additional_integer = frac_part / power(10, fmt->precision);
     frac_part -= additional_integer * 10;
     int_part += additional_integer;
 
