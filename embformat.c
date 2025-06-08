@@ -171,7 +171,7 @@ static int pfn_literal_percent(va_list *va, FmtWord *fmt, char *outbuf, size_t f
 
 #define INT_PRINT_OUTBUF_SIZE (47)
 
-static char sNumChars[] = "0123456789abcdefABCDEF";
+static const char sNumChars[] = "0123456789abcdefABCDEF";
 
 static int print_number(uint64_t u, bool negative, FmtWord *fmt, char *outbuf, size_t free_space) {
     // output buffer fitting the full long int range
