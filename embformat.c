@@ -598,7 +598,7 @@ unsigned long int vembfmt(char *str, unsigned long int len, const char *format, 
     char word_str[MAX_FORMAT_WORD_LEN + 1];
     const char *word_begin;
     size_t sum_copy_len = 0;
-    while ((*unproc_text) && (unproc_text_next = fetch_format_word(unproc_text, word_str, &word_begin, MAX_FORMAT_WORD_LEN)) && free_space > 0) {
+    while ((*unproc_text) && ((unproc_text_next = fetch_format_word(unproc_text, word_str, &word_begin, MAX_FORMAT_WORD_LEN)) != NULL) && free_space > 0) {
         // print preceding text
         word_begin--;
         int copy_len = MIN((word_begin - unproc_text), free_space);
